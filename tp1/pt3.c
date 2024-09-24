@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <ctype.h>
 
 #define MAX_CAMPOS 10
 #define MAX_NOMBRE_CAMPO 50
@@ -48,61 +49,53 @@ void modificarRegistro(char *nombreArchivo);
 void leerArchivoEntero(char *nombreArchivo);
 void limpiarBuffer();
 void crearArchivo(char *nombreMetadata, char *nombreArchivo);
+bool ValidarEntero(int *numero, int min, int max);
 
-int main()
-{
-    // Menú principal
+int main() {
     signal(SIGINT, manejarInterrupcion);
     Metadata metadata;
     int opcion;
     bool flag = false;
-    do
-    {
+    
+    do {
         printf("\nMenu:\n");
         printf("1. Definir estructura del archivo\n");
         printf("2. Utilizar el archivo (ABM)\n");
         printf("0. Salir\n");
 
-        // Usamos la función ValidarEntero para obtener una opción válida
-        if (!ValidarEntero(&opcion, 0, 2)){
+        if (!ValidarEntero(&opcion, 0, 2)) {
             printf("Opción no válida. Intente nuevamente.\n");
             continue;
         }
 
-        limpiarBuffer();
-
-        switch (opcion)
-        {
+        switch (opcion) {
         case 1:
-            if (flag)
-            {
-                printf("\n La estructura ya esta definida, utilice ABM\n");
+            if (flag) {
+                printf("\nLa estructura ya está definida, utilice ABM\n");
                 break;
             }
             definirEstructuraArchivo(&metadata);
             guardarMetadata(&metadata);
             int respuesta;
             printf("Desea leer el archivo metadata? (1 si - 0 no)\n");
-            if (!ValidarEntero(&respuesta, 0, 1)){
+            if (!ValidarEntero(&respuesta, 0, 1)) {
                 printf("Valor no válido. Intente nuevamente.\n");
                 continue;
             }
 
-            if (respuesta == 1)
-            {
+            if (respuesta == 1) {
                 verArchivoMetadata(METADATA_FILENAME);
             }
             crearArchivo(METADATA_FILENAME, FILENAME);
             flag = true;
             break;
         case 2:
-            if (!flag)
-            {
-                printf("\nNo definio la estructura del archivo\n");
+            if (!flag) {
+                printf("\nNo ha definido la estructura del archivo\n");
                 break;
             }
             printf("\n1. Alta\n2. Baja\n3. Modificación\n4. Leer archivo \nElija una opción: ");
-            if (!ValidarEntero(&opcion, 1, 4)){
+            if (!ValidarEntero(&opcion, 1, 4)) {
                 printf("Opción no válida. Intente nuevamente.\n");
                 continue;
             }
@@ -613,8 +606,7 @@ void leerArchivoEntero(char *nombreArchivo)
 void limpiarBuffer()
 {
     int c;
-    while ((c = getchar()) != '\n' && c != EOF)
-        ;
+    while ((c = getchar()) != '\n' && c != EOF);
 }
 
 void manejarInterrupcion(int signum)
@@ -629,96 +621,44 @@ void sacarEspacios(char *cad) {
     int i = 0;
     int j = longCadena - 1;
 
-    while(isspace(cad[i])){
+    while (isspace(cad[i])) {
         i++;
     }
 
-    while(j >= 0 && isspace(cad[j])){
+    while (j >= 0 && isspace(cad[j])) {
         j--;
     }
 
     cad[j + 1] = '\0';
 
-    if(i > 0){
+    if (i > 0) {
         int k;
-        for(k = 0; k <= j - i + 1; k++){
+        for (k = 0; k <= j - i + 1; k++) {
             cad[k] = cad[i + k];
         }
         cad[k] = '\0';
     }
 }
 
-bool ValidarEntero(int *numero, int min, int max){
-    bool esValido = false;
+bool ValidarEntero(int *numero, int min, int max) {
     char cadena[12];
-    int i;
-    bool esNegativo = false;
+    bool esValido = false;
 
-    while(esValido == false){
+    while (!esValido) {
         printf("Ingresar numero: ");
         fgets(cadena, 12, stdin);
 
-        if(cadena[0] == '-'){
-            esNegativo = true; 
-            for(size_t i = 0; i < strlen(cadena); i++){
-                cadena[i] = cadena[i+1];
-            }
-        }
+        // Verificamos si es un número válido
+        char *endPtr;
+        *numero = strtol(cadena, &endPtr, 10);
 
-        if(strlen(cadena) == 1){
-            printf("ERROR: Ingresa un numero.\n\n");
-            continue;
-        }
-
-        if(cadena[strlen(cadena)-1] != '\n'){
-            printf("ERROR: Ingresa un numero valido.\n\n");
-            fflush(stdin);
-            continue;
-        }
-
-        if(cadena[0] == ' '){
-            printf("ERROR: Ingresa un numero.\n\n");
-            continue;
-        }
-
-        for(i = 0; i < 12; i++){
-            if(cadena[i] == '\n'){
-                cadena[i] = '\0';
-                break;
-            }
-        }
-
-        sacarEspacios(cadena);
-
-        bool esEntero = true;
-
-        for(int i = 0; i < 12; i++){
-            if(cadena[i] == '\0'){
-                break;
-            }
-            if(!iswdigit(btowc(cadena[i]))){
-                esEntero = false;
-                break;
-            }
-        }
-
-        if(esEntero == true){
-            int valor = atoi(cadena);
-            if(esNegativo){
-                valor = -valor;
-            }
-            if(valor >= min && valor <= max){
-                *numero = valor;
-                esValido = true;
-                return esValido;
-            } else {
-                printf("ERROR: El número debe estar entre %d y %d.\n", min, max);
-            }
-        }
-        else{
-            printf("ERROR: No es un numero entero valido.\n\n");
+        // Verificamos que toda la cadena sea un número y esté dentro del rango
+        if (endPtr == cadena || *endPtr != '\n' || *numero < min || *numero > max) {
+            printf("ERROR: Ingresa un número válido entre %d y %d.\n", min, max);
+        } else {
+            esValido = true;
         }
     }
-    
+
     return esValido;
 }
