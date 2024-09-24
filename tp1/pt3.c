@@ -1,99 +1,613 @@
-// STRUCT CAMPO CON NOMBRE Y LONGITUD
-// STRUCT REGISTRO CON CANTIDAD, LONGITUD Y STRUCT DE CAMPOS (PUNTERO)
-// FUNCIONES DEFINICION REGISTRO, DEVUELVE UN PUNTERO A UNA ESTRUCTURA REGISTRO
-// FUNCION INGRESO REGISTRO, RECIBE STRUCT REGISTRO, DEVUELVE PUNTERO CHAR, PIDE LOS DSITNITOS CAMPOS Y ME LOS DEVUELVE EN STRING (parsear que separa cada registro).
-// MOSTRAR REGISTRO, TOMA EL REGISTRO COMO STRING COMO ESTRUCTURA Y ME LOS MUESTRA.
-// MENU ALTA DE REGISTRO, CONSULTA
-// ALTAS ARCHIVO
-// BUSQUEDAS ARCHIVO AMBOS RECIBEN LA ESTRUCTURA REGISTRO.
-// CANTIDAD DE BYTES DEL ARCHIVO. RECIBE EL FILE.
-
-// DEFNIICIION REGFISTTRO, PRIMERO UN MALLOC PARA EL REGISTTRO  R = (ESTEREGISTRO) MALLOC (SIZEOF); SETEA LOS CAMPOS Y LA CANTIDAD, HAGO UN
-// MALLOC PARA DEFINIR EL ARREGLO DE CAMPOS, CANTIDAD * TAMAÑO DE ESTRUCTURA DE CAMPO.
-// RECORDAR BYTE PARA EL ACTIVO O INACTIVO DEL CLIENTE. RETORNA EL PRIMER PUNTERO CREADO.
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <memory.h>
 #include <string.h>
 #include <stdbool.h>
-#include <ctype.h>
+#include <signal.h>
 
-struct campo
+#define MAX_CAMPOS 10
+#define MAX_NOMBRE_CAMPO 50
+#define MAX_REGISTROS 1000
+#define FILENAME "datos.bin"
+#define METADATA_FILENAME "metadata.bin"
+const int NULO = -1;
+
+typedef struct
 {
-    char nombre[30];
+    char nombre[MAX_NOMBRE_CAMPO];
     int longitud;
-};
+} Campo;
 
-struct estRegistro
+typedef struct
 {
-    int cantidad, longitud;
-    struct campo *campos;
-};
+    int cantidadCampos;
+    Campo campos[MAX_CAMPOS];
+    int cantidadRegistros;
+    int longitudRegistro;
+} Metadata;
 
-struct estRegistro *definicionRegistro();
-char *ingresoRegistro(struct estRegistro *);
+typedef struct
+{
+    char *datos; // Datos de los campos
+    int estado;  // 1 si el registro está ocupado, 0 si está vacío
+} Registro;
+
+// Funciones para manejar la metadata
+void definirEstructuraArchivo(Metadata *metadata);
+void guardarMetadata(const Metadata *metadata);
+void manejarInterrupcion(int signum);
+// Función para mostrar el contenido del archivo metadata.bin
+void verArchivoMetadata(char *nombreArchivo);
+
+// Funciones para manejar los registros
+Registro datosRegistro();
+void altaRegistro(char *nombreArchivo, Registro nuevoRegistro);
+void bajaRegistro(char *nombreArchivo);
+void modificarRegistro(char *nombreArchivo);
+
+// Funciones auxiliares
+void leerArchivoEntero(char *nombreArchivo);
 void limpiarBuffer();
-void mostrarRegistro(char *, struct estRegistro *);
+void crearArchivo(char *nombreMetadata, char *nombreArchivo);
 
-struct estRegistro *definicionRegistro()
+int main()
 {
-    struct estRegistro *r = (struct estRegistro *)malloc(sizeof(struct estRegistro));
-    int cantidad, longitud;
-    printf("Ingrese la cantidad de campos que quiere añadir:    \n");
-    // c. De alguna forma, el usuario le indicará al programa cuando haterminado de definir la estructura de la lista de clientes
-    // No se a que se refieren con eso, si para eso les preguntamos cuantos campos van a ser...
-    scanf("%d", &cantidad);
-    struct campo *lista = (struct campo *)malloc(sizeof(struct campo) * cantidad);
-    // VALIDAR QUE CANTIDAD SEA MAYOR A 0;
-    for (int i = 0; i < cantidad; i++)
+    // Menú principal
+    signal(SIGINT, manejarInterrupcion);
+    Metadata metadata;
+    int opcion;
+    bool flag = false;
+    do
     {
-        printf("Ingrese el nombre que va a tener el campo numero [%d] :   \n", i);
-        scanf("%d", &lista[i].longitud);
-        printf("Ingrese la longitud que va a tener el campo numero [%d] :   \n", i);
-        fgets(lista[i].nombre, sizeof(lista[i].nombre), stdin);
-        lista[i].nombre[strcspn(lista[i].nombre, "\n")] = '\0';
+        printf("\nMenu:\n");
+        printf("1. Definir estructura del archivo\n");
+        printf("2. Utilizar el archivo (ABM)\n");
+        printf("0. Salir\n");
+
+        // Usamos la función ValidarEntero para obtener una opción válida
+        if (!ValidarEntero(&opcion, 0, 2)){
+            printf("Opción no válida. Intente nuevamente.\n");
+            continue;
+        }
+
         limpiarBuffer();
-    }
-    r->campos = lista;
-    r->cantidad = cantidad;
-    return r;
+
+        switch (opcion)
+        {
+        case 1:
+            if (flag)
+            {
+                printf("\n La estructura ya esta definida, utilice ABM\n");
+                break;
+            }
+            definirEstructuraArchivo(&metadata);
+            guardarMetadata(&metadata);
+            int respuesta;
+            printf("Desea leer el archivo metadata? (1 si - 0 no)\n");
+            if (!ValidarEntero(&respuesta, 0, 1)){
+                printf("Valor no válido. Intente nuevamente.\n");
+                continue;
+            }
+
+            if (respuesta == 1)
+            {
+                verArchivoMetadata(METADATA_FILENAME);
+            }
+            crearArchivo(METADATA_FILENAME, FILENAME);
+            flag = true;
+            break;
+        case 2:
+            if (!flag)
+            {
+                printf("\nNo definio la estructura del archivo\n");
+                break;
+            }
+            printf("\n1. Alta\n2. Baja\n3. Modificación\n4. Leer archivo \nElija una opción: ");
+            if (!ValidarEntero(&opcion, 1, 4)){
+                printf("Opción no válida. Intente nuevamente.\n");
+                continue;
+            }
+
+            limpiarBuffer();
+            if (opcion == 1)
+            {
+                Registro registro = datosRegistro();
+                altaRegistro(FILENAME, registro);
+            }
+            else if (opcion == 2)
+            {
+                bajaRegistro(FILENAME);
+            }
+            else if (opcion == 3)
+            {
+                modificarRegistro(FILENAME);
+            }
+            else if (opcion == 4)
+            {
+                leerArchivoEntero(FILENAME);
+            }
+
+            break;
+        case 0:
+            printf("Saliendo...\n");
+            break;
+        default:
+            printf("Opción no válida.\n");
+        }
+    } while (opcion != 0);
+
+    return 0;
 }
 
+void definirEstructuraArchivo(Metadata *metadata)
+{
+    printf("Ingrese la cantidad de campos: ");
+    scanf("%d", &metadata->cantidadCampos);
+    limpiarBuffer();
+    int longitud = 0;
+    for (int i = 0; i < metadata->cantidadCampos; i++)
+    {
+        printf("Ingrese el nombre del campo %d: ", i + 1);
+        fgets(metadata->campos[i].nombre, MAX_NOMBRE_CAMPO, stdin);
+        metadata->campos[i].nombre[strcspn(metadata->campos[i].nombre, "\n")] = '\0';
 
-
-//Mas o menos lo que vi, es hacer un ciclo con la cantidad de campos (no se si hay que escribirla en el archivo o directamente usarla en el ciclo)
-//Ir escribiendo el el archivo cada nombre con su longitud, hasta que termine el ciclo
-
-void guardarStructEnArchivo(archivo, struct){
-
-    fwrite(r->cantidad)
-
-    for (int i = 0; i < r->cantidad; i++){
-        fwrite(campos_nombre, tamaño, archivo donde lo guardas);
-        fwrite(campos_longitud, "", "");
+        printf("Ingrese la longitud máxima del campo %d: ", i + 1);
+        scanf("%d", &metadata->campos[i].longitud);
+        limpiarBuffer();
+        longitud += metadata->campos[i].longitud;
     }
-    
 
+    printf("Ingrese la cantidad de registros: ");
+    scanf("%d", &metadata->cantidadRegistros);
+    limpiarBuffer();
+    metadata->longitudRegistro = longitud;
 }
 
-//calculamos el tamaño del registro primero, creamos el registro y despues con otro ciclo vamos cargando los datos de cada campo 
-//despues escribir el registro ya cargado en el archivo.
+void guardarMetadata(const Metadata *metadata)
+{
+    FILE *archivo = fopen(METADATA_FILENAME, "wb");
+    if (archivo == NULL)
+    {
+        printf("Error al crear el archivo de metadata.\n");
+        return;
+    }
+    fwrite(metadata, sizeof(Metadata), 1, archivo);
+    fclose(archivo);
+}
 
-
-char *ingresoRegistro(struct estRegistro *r){
-
-    int tamañoRegistro;
-    for (int i = 0; i < r->cantidad; i++){
-        /* code */
+void verArchivoMetadata(char *nombreArchivo)
+{
+    FILE *arch = fopen(nombreArchivo, "rb");
+    if (arch == NULL)
+    {
+        printf("No se pudo abrir el archivo %s.\n", nombreArchivo);
+        return;
     }
 
-    char *registro = (char *)malloc(tamañoRegistro);
-    
-    //carga de datos
+    Metadata metadata;
 
-    FILE *archivo = fopen;
-    fwrite(registro, sizeof(char), tamañoRegistro, archivo)
+    // Leer el contenido del archivo
+    fread(&metadata, sizeof(Metadata), 1, arch);
+
+    // Mostrar la información leída
+    printf("Cantidad de campos: %d\n", metadata.cantidadCampos);
+    for (int i = 0; i < metadata.cantidadCampos; i++)
+    {
+        printf("Campo #%d: %s (Longitud: %d)\n", i + 1, metadata.campos[i].nombre, metadata.campos[i].longitud);
+    }
+    printf("Cantidad de registros: %d\n", metadata.cantidadRegistros);
+
+    fclose(arch);
+}
+
+// Funciones con el archivo data
+void crearArchivo(char *nombreMetadata, char *nombreArchivo)
+{
+    FILE *arch, *metadata;
+
+    // Abro archivo metadata para buscar la longitud del registro
+    metadata = fopen(nombreMetadata, "rb");
+    if (metadata == NULL)
+    {
+        printf("No se pudo abrir el archivo de metadata.\n");
+        return;
+    }
+
+    Metadata datos;
+    size_t bytesLeidos = fread(&datos, sizeof(Metadata), 1, metadata);
+    if (bytesLeidos != 1)
+    {
+        printf("Error al leer el archivo de metadata.\n");
+        fclose(metadata);
+        return;
+    }
+    fclose(metadata);
+
+    // Abro archivo para escribirlo con la longitud necesaria
+    arch = fopen(nombreArchivo, "wb");
+    if (arch == NULL)
+    {
+        printf("No se pudo crear el archivo.\n");
+        return;
+    }
+
+    // Inicializo el registro con la longitud del campo datos
+    Registro registro;
+    registro.datos = (char *)calloc(datos.longitudRegistro, sizeof(char));
+    if (registro.datos == NULL)
+    {
+        printf("No se pudo asignar memoria.\n");
+        fclose(arch);
+        return;
+    }
+    registro.estado = 0;
+
+    for (int i = 0; i < datos.cantidadRegistros; i++)
+    {
+        fwrite(&registro, sizeof(Registro), 1, arch);
+    }
+
+    fclose(arch);
+    free(registro.datos); // Libera la memoria del campo datos
+}
+
+void altaRegistro(char *nombreArchivo, Registro nuevoRegistro)
+{
+    FILE *arch = fopen(nombreArchivo, "r+b");
+    if (arch == NULL)
+    {
+        perror("Error al abrir el archivo");
+        return;
+    }
+
+    FILE *datos = fopen(METADATA_FILENAME, "rb");
+    if (datos == NULL)
+    {
+        perror("Error al abrir el archivo de metadata");
+        fclose(arch);
+        return;
+    }
+
+    Metadata metadata;
+    fread(&metadata, sizeof(Metadata), 1, datos);
+    fclose(datos);
+
+    int posicionAdarElAlta;
+    Registro leido;
+
+    long longitudRegistro = sizeof(Registro);
+
+    // Loop para pedir la posición hasta que se seleccione una posición libre
+    do
+    {
+        printf("EN QUE POSICIÓN DESEA DAR EL ALTA DEL REGISTRO : \n");
+        scanf("%d", &posicionAdarElAlta);
+
+        // Verifica si la posición está dentro del rango válido
+        while (posicionAdarElAlta >= metadata.cantidadRegistros || posicionAdarElAlta < 0)
+        {
+            printf("REINGRESE UNA POSICION CORRECTA : \n");
+            scanf("%d", &posicionAdarElAlta);
+        }
+
+        // Mueve el puntero a la posición seleccionada
+        if (fseek(arch, posicionAdarElAlta * longitudRegistro, SEEK_SET) != 0)
+        {
+            perror("Error al mover el puntero del archivo");
+            fclose(arch);
+            return;
+        }
+
+        // Lee el registro en la posición seleccionada
+        fread(&leido, sizeof(Registro), 1, arch);
+
+        if (leido.estado == 1)
+        {
+            printf("La posición está ocupada, elija otra\n");
+        }
+    } while (leido.estado == 1);
+
+    nuevoRegistro.estado = 1; // Marca el nuevo registro como ocupado
+
+    // Mueve el puntero de vuelta a la posición seleccionada
+    if (fseek(arch, posicionAdarElAlta * longitudRegistro, SEEK_SET) != 0)
+    {
+        perror("Error al mover el puntero del archivo");
+        fclose(arch);
+        return;
+    }
+
+    // Escribe el nuevo registro en la posición seleccionada
+    if (fwrite(&nuevoRegistro, sizeof(Registro), 1, arch) != 1)
+    {
+        perror("Error al escribir el registro en el archivo");
+    }
+
+    fclose(arch);
+}
+
+void bajaRegistro(char *nombreArchivo)
+{
+    FILE *arch = fopen(nombreArchivo, "r+b");
+    if (arch == NULL)
+    {
+        perror("Error al abrir el archivo");
+        return;
+    }
+
+    FILE *datos = fopen(METADATA_FILENAME, "rb");
+    if (datos == NULL)
+    {
+        perror("Error al abrir el archivo de metadata");
+        fclose(arch);
+        return;
+    }
+
+    Metadata metadata;
+    fread(&metadata, sizeof(Metadata), 1, datos);
+    fclose(datos);
+    int posicionAdarDeBaja;
+    Registro leido;
+    // Loop para pedir la posición hasta que se seleccione una posición libre
+    do
+    {
+        printf("EN QUE POSICIÓN DESEA DAR LA BAJA DEL REGISTRO : \n");
+        scanf("%d", &posicionAdarDeBaja);
+
+        // Verifica si la posición está dentro del rango válido
+        while (posicionAdarDeBaja >= metadata.cantidadRegistros || posicionAdarDeBaja < 0)
+        {
+            printf("REINGRESE UNA POSICION CORRECTA : \n");
+            scanf("%d", &posicionAdarDeBaja);
+        }
+
+        // Mueve el puntero a la posición seleccionada
+        if (fseek(arch, posicionAdarDeBaja * sizeof(Registro), SEEK_SET) != 0)
+        {
+            perror("Error al mover el puntero del archivo");
+            fclose(arch);
+            return;
+        }
+
+        // Lee el registro en la posición seleccionada
+        fread(&leido, sizeof(Registro), 1, arch);
+
+        if (leido.estado != 1)
+        {
+            printf("La posición está Libre, por lo que no se puede realizar una baja, elija otra\n");
+            printf("Desea ver la lista de los registros? (1-SI) \n");
+            scanf("%d", &posicionAdarDeBaja);
+            if (posicionAdarDeBaja == 1)
+            {
+                leerArchivoEntero(nombreArchivo);
+            }
+        }
+    } while (leido.estado != 1);
+
+    int confirmacion;
+    leido.estado = 2;
+    fseek(arch, posicionAdarDeBaja * sizeof(Registro), SEEK_SET);
+    printf("El registro #%d tiene los siguientes datos: \n", posicionAdarDeBaja);
+    printf("Datos : %s \n", leido.datos);
+    printf("Estado : %d", leido.estado);
+    printf("Desea confirmar la eliminación? (1-SI 0-NO) \n");
+    scanf("%d", &confirmacion);
+    while (confirmacion < 0 || confirmacion > 1)
+    {
+        printf("Reingrese un valor correcto - (1 SI - 0 NO)");
+        scanf("%d", &confirmacion);
+    }
+    if (confirmacion == 1)
+    {
+        printf("escribiendo nuevo registro\n");
+        fwrite(&leido, sizeof(Registro), 1, arch);
+    }
+    fclose(arch);
+}
+
+void modificarRegistro(char *nombreArchivo)
+{
+    FILE *arch = fopen(nombreArchivo, "r+b");
+    if (arch == NULL)
+    {
+        perror("Error al abrir el archivo");
+        return;
+    }
+
+    FILE *datos = fopen(METADATA_FILENAME, "rb");
+    if (datos == NULL)
+    {
+        perror("Error al abrir el archivo de metadata");
+        fclose(arch);
+        return;
+    }
+
+    Metadata metadata;
+    fread(&metadata, sizeof(Metadata), 1, datos);
+    fclose(datos);
+
+    int indice = 0;
+    Registro leido;
+
+    // Loop para pedir la posición hasta que se seleccione una posición válida
+    do
+    {
+        printf("EN QUE POSICIÓN DESEA MODIFICAR UN REGISTRO : \n");
+        scanf("%d", &indice);
+
+        // Verifica si la posición está dentro del rango válido
+        while (indice >= metadata.cantidadRegistros || indice < 0)
+        {
+            printf("REINGRESE UNA POSICION CORRECTA : \n");
+            scanf("%d", &indice);
+        }
+
+        // Mueve el puntero a la posición seleccionada
+        if (fseek(arch, indice * sizeof(Registro), SEEK_SET) != 0)
+        {
+            perror("Error al mover el puntero del archivo");
+            fclose(arch);
+            return;
+        }
+
+        // Lee el registro en la posición seleccionada
+        fread(&leido, sizeof(Registro), 1, arch);
+
+        if (leido.estado != 1)
+        {
+            printf("La posición está Libre, por lo que no se puede realizar una modificación, elija otra\n");
+            printf("Desea ver la lista de los registros? (1-SI) \n");
+            int verRegistros;
+            scanf("%d", &verRegistros);
+            if (verRegistros == 1)
+            {
+                leerArchivoEntero(nombreArchivo);
+            }
+        }
+    } while (leido.estado != 1);
+
+    // Mostrar información del registro actual
+    printf("El registro #%d tiene los siguientes datos: \n", indice);
+    printf("Datos : %s \n", leido.datos);
+    printf("Estado : %d\n", leido.estado);
+
+    // Selección del campo a modificar
+    int campo;
+    printf("¿Qué campo desea modificar? (1-%d)\n", metadata.cantidadCampos);
+    scanf("%d", &campo);
+
+    // Validación del campo seleccionado
+    if (campo <= 0 || campo > metadata.cantidadCampos)
+    {
+        printf("Campo inválido.\n");
+        fclose(arch);
+        return;
+    }
+
+    // Limpiar el buffer antes de leer nuevos datos
+    limpiarBuffer();
+
+    // Obtener el nuevo valor para el campo
+    printf("\nIngrese el nuevo valor para el campo %s: ", metadata.campos[campo - 1].nombre);
+    char nuevoValor[metadata.campos[campo - 1].longitud + 1];  // +1 para el terminador nulo
+    fgets(nuevoValor, sizeof(nuevoValor), stdin);
+    nuevoValor[strcspn(nuevoValor, "\n")] = '\0';  // Eliminar el salto de línea
+
+    // Verificar que el nuevo valor no exceda la longitud permitida
+    if ((int)strlen(nuevoValor) > metadata.campos[campo - 1].longitud)
+    {
+        printf("El valor ingresado excede la longitud permitida para el campo.\n");
+        fclose(arch);
+        return;
+    }
+
+    // Actualizar el campo en el registro leído
+    int offset = 0;
+    for (int i = 0; i < metadata.cantidadCampos; i++)
+    {
+        if (i == (campo - 1))
+        {
+            // Copiar el nuevo valor en el campo correspondiente del registro
+            strncpy(leido.datos + offset, nuevoValor, metadata.campos[i].longitud);
+            break;
+        }
+        offset += metadata.campos[i].longitud;
+    }
+
+    // Mover el puntero a la posición original del registro
+    fseek(arch, indice * sizeof(Registro), SEEK_SET);
+
+    // Escribir el registro modificado de nuevo en el archivo
+    fwrite(&leido, sizeof(Registro), 1, arch);
+
+    fclose(arch);
+    printf("Modificación realizada con éxito.\n");
+}
+
+Registro datosRegistro()
+{
+    Registro nuevoRegistro;
+
+    FILE *datos = fopen(METADATA_FILENAME, "rb");
+    if (datos == NULL)
+    {
+        perror("Error al abrir el archivo de metadata");
+        exit(0);
+    }
+
+    Metadata metadata;
+    fread(&metadata, sizeof(Metadata), 1, datos);
+    fclose(datos);
+
+    // Asignar memoria para los datos del registro según la longitud total de los campos
+    nuevoRegistro.datos = (char *)malloc(metadata.longitudRegistro * sizeof(char));
+    if (nuevoRegistro.datos == NULL)
+    {
+        printf("No se pudo asignar memoria para los datos del registro.\n");
+        exit(1);
+    }
+
+    int offset = 0;
+    for (int i = 0; i < metadata.cantidadCampos; i++)
+    {
+        char buffer[256]; // Buffer temporal para almacenar la entrada del usuario
+
+        printf("\nIngrese %s: ", metadata.campos[i].nombre);
+        fgets(buffer, sizeof(buffer), stdin);
+        buffer[strcspn(buffer, "\n")] = '\0'; // Eliminar el salto de línea
+
+        // Copiar el valor ingresado al lugar correspondiente en datos
+        int longitudCampo = metadata.campos[i].longitud;
+        if ((int)strlen(buffer) > longitudCampo)
+        {
+            printf("Advertencia: El valor ingresado para %s es demasiado largo. Se truncará.\n", metadata.campos[i].nombre);
+        }
+        strncpy(nuevoRegistro.datos + offset, buffer, longitudCampo);
+
+        // Rellenar el resto del campo con espacios si es necesario
+        if ((int)strlen(buffer) < longitudCampo)
+        {
+            memset(nuevoRegistro.datos + offset + strlen(buffer), ' ', longitudCampo - strlen(buffer));
+        }
+
+        // Mover el offset al siguiente campo
+        offset += longitudCampo;
+    }
+
+    nuevoRegistro.estado = 1;
+
+    return nuevoRegistro;
+}
+
+void leerArchivoEntero(char *nombreArchivo)
+{
+    FILE *arch = fopen(nombreArchivo, "rb");
+    if (arch == NULL)
+    {
+        perror("Error al abrir el archivo");
+        return;
+    }
+
+    Registro cliente;
+    int index = 0;
+
+    printf("\n------------------------------\n");
+    printf(" Mostrando todos los registros \n");
+    printf("------------------------------\n");
+
+    while (fread(&cliente, sizeof(Registro), 1, arch) == 1)
+    {
+        // Verificar si el registro está activo
+        if (cliente.estado == 1)
+        {
+            printf("Registro #%d:\n", index);
+            printf("Estado   : %d", cliente.estado);
+            printf("\tDatos    : %s\n", cliente.datos);
+            printf("------------------------------\n");
+        }
+        index++;
+    }
+
+    fclose(arch);
 }
 
 void limpiarBuffer()
@@ -101,4 +615,110 @@ void limpiarBuffer()
     int c;
     while ((c = getchar()) != '\n' && c != EOF)
         ;
+}
+
+void manejarInterrupcion(int signum)
+{
+    printf("\nInterrupción detectada. Cerrando correctamente...\n");
+    // Realiza limpieza aquí (cierra archivos, libera memoria, etc.)
+    exit(signum);
+}
+
+void sacarEspacios(char *cad) {
+    int longCadena = strlen(cad);
+    int i = 0;
+    int j = longCadena - 1;
+
+    while(isspace(cad[i])){
+        i++;
+    }
+
+    while(j >= 0 && isspace(cad[j])){
+        j--;
+    }
+
+    cad[j + 1] = '\0';
+
+    if(i > 0){
+        int k;
+        for(k = 0; k <= j - i + 1; k++){
+            cad[k] = cad[i + k];
+        }
+        cad[k] = '\0';
+    }
+}
+
+bool ValidarEntero(int *numero, int min, int max){
+    bool esValido = false;
+    char cadena[12];
+    int i;
+    bool esNegativo = false;
+
+    while(esValido == false){
+        printf("Ingresar numero: ");
+        fgets(cadena, 12, stdin);
+
+        if(cadena[0] == '-'){
+            esNegativo = true; 
+            for(size_t i = 0; i < strlen(cadena); i++){
+                cadena[i] = cadena[i+1];
+            }
+        }
+
+        if(strlen(cadena) == 1){
+            printf("ERROR: Ingresa un numero.\n\n");
+            continue;
+        }
+
+        if(cadena[strlen(cadena)-1] != '\n'){
+            printf("ERROR: Ingresa un numero valido.\n\n");
+            fflush(stdin);
+            continue;
+        }
+
+        if(cadena[0] == ' '){
+            printf("ERROR: Ingresa un numero.\n\n");
+            continue;
+        }
+
+        for(i = 0; i < 12; i++){
+            if(cadena[i] == '\n'){
+                cadena[i] = '\0';
+                break;
+            }
+        }
+
+        sacarEspacios(cadena);
+
+        bool esEntero = true;
+
+        for(int i = 0; i < 12; i++){
+            if(cadena[i] == '\0'){
+                break;
+            }
+            if(!iswdigit(btowc(cadena[i]))){
+                esEntero = false;
+                break;
+            }
+        }
+
+        if(esEntero == true){
+            int valor = atoi(cadena);
+            if(esNegativo){
+                valor = -valor;
+            }
+            if(valor >= min && valor <= max){
+                *numero = valor;
+                esValido = true;
+                return esValido;
+            } else {
+                printf("ERROR: El número debe estar entre %d y %d.\n", min, max);
+            }
+        }
+        else{
+            printf("ERROR: No es un numero entero valido.\n\n");
+        }
+    }
+    
+    return esValido;
 }
